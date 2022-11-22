@@ -1,13 +1,18 @@
 package cmd
 
 import (
-	"github.com/mdordoy/peloton-to-garmin/config"
-	"github.com/rs/zerolog/log"
+	"context"
+
+	"github.com/mdordoy/peloton-to-garmin/logger"
+	"github.com/mdordoy/peloton-to-garmin/peloton"
 	"github.com/spf13/cobra"
 )
 
 var syncConfig struct {
-	Path string
+	LogLevel        string
+	PrettyLog       bool
+	PelotonUsername string
+	PelotonPassword string
 }
 
 var SyncCmd = &cobra.Command{
@@ -17,9 +22,12 @@ var SyncCmd = &cobra.Command{
 }
 
 func syncCmd(cmd *cobra.Command, args []string) error {
-	_, err := config.ReadConfig(syncConfig.Path)
+	ctx := context.Background()
+	logger := logger.NewLogger(syncConfig.LogLevel, syncConfig.PrettyLog)
+	_ = logger.WithContext(ctx)
+	_, err := peloton.NewClient(syncConfig.PelotonUsername, syncConfig.PelotonPassword)
 	if err != nil {
-		log.Fatal().Err(err).Msgf("Error reading sync configuration at %s", syncConfig.Path)
+		logger.Fatal().Err(err).Msg("Failed to authenticate with Peloton")
 	}
 
 	return nil
@@ -27,5 +35,8 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 
 func init() {
 	RootCmd.AddCommand(SyncCmd)
-	SyncCmd.Flags().StringVarP(&syncConfig.Path, "config", "c", "config.yml", "Configuration file. Default is \"config.yml\"")
+	SyncCmd.Flags().BoolVar(&syncConfig.PrettyLog, "PrettyLogging", false, "Use true for human readable log output")
+	SyncCmd.Flags().StringVar(&syncConfig.LogLevel, "loglevel", "info", "Log Level: trace, debug, info, warn,error")
+	SyncCmd.Flags().StringVar(&syncConfig.PelotonPassword, "pelotonPassword", "", "peloton Password")
+	SyncCmd.Flags().StringVar(&syncConfig.PelotonUsername, "pelotonUsername", "", "peloton Username")
 }
