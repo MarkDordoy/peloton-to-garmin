@@ -8,3 +8,5 @@
 /build/
 /out/
 .vscode/
+/sampleData
+/temp

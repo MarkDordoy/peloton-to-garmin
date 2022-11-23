@@ -46,9 +46,13 @@ type WorkoutData struct {
 }
 
 type WorkoutDetail struct {
-	Duration         int  `json:"duration"`
-	IsClassPlanShown bool `json:"is_class_plan_shown"`
-	SegmentList      []struct {
+	Id                string
+	FitnessDiscipline string
+	StartTime         time.Time
+	EndTime           time.Time
+	Duration          int  `json:"duration"`
+	IsClassPlanShown  bool `json:"is_class_plan_shown"`
+	SegmentList       []struct {
 		ID              string  `json:"id"`
 		Length          int     `json:"length"`
 		StartTimeOffset int     `json:"start_time_offset"`
@@ -62,24 +66,24 @@ type WorkoutDetail struct {
 	} `json:"segment_list"`
 	SecondsSincePedalingStart []int `json:"seconds_since_pedaling_start"`
 	AverageSummaries          []struct {
-		DisplayName string `json:"display_name"`
-		DisplayUnit string `json:"display_unit"`
-		Value       int    `json:"value"`
-		Slug        string `json:"slug"`
+		DisplayName string  `json:"display_name"`
+		DisplayUnit string  `json:"display_unit"`
+		Value       float64 `json:"value"`
+		Slug        string  `json:"slug"`
 	} `json:"average_summaries"`
 	Summaries []struct {
-		DisplayName string `json:"display_name"`
-		DisplayUnit string `json:"display_unit"`
-		Value       int    `json:"value"`
-		Slug        string `json:"slug"`
+		DisplayName string  `json:"display_name"`
+		DisplayUnit string  `json:"display_unit"`
+		Value       float64 `json:"value"`
+		Slug        string  `json:"slug"`
 	} `json:"summaries"`
 	Metrics []struct {
-		DisplayName  string `json:"display_name"`
-		DisplayUnit  string `json:"display_unit"`
-		MaxValue     int    `json:"max_value"`
-		AverageValue int    `json:"average_value"`
-		Values       []int  `json:"values"`
-		Slug         string `json:"slug"`
+		DisplayName  string    `json:"display_name"`
+		DisplayUnit  string    `json:"display_unit"`
+		MaxValue     float64   `json:"max_value"`
+		AverageValue float64   `json:"average_value"`
+		Values       []float64 `json:"values"`
+		Slug         string    `json:"slug"`
 		Zones        []struct {
 			DisplayName string `json:"display_name"`
 			Slug        string `json:"slug"`
@@ -90,10 +94,7 @@ type WorkoutDetail struct {
 		} `json:"zones,omitempty"`
 		MissingDataDuration int `json:"missing_data_duration,omitempty"`
 	} `json:"metrics"`
-	HasAppleWatchMetrics   bool          `json:"has_apple_watch_metrics"`
-	LocationData           []interface{} `json:"location_data"`
-	IsLocationDataAccurate interface{}   `json:"is_location_data_accurate"`
-	SplitsData             struct {
+	SplitsData struct {
 		DistanceMarkerDisplayUnit  string `json:"distance_marker_display_unit"`
 		ElevationChangeDisplayUnit string `json:"elevation_change_display_unit"`
 		Splits                     []struct {
@@ -134,11 +135,4 @@ type WorkoutDetail struct {
 			HeartRateZ5Duration int `json:"heart_rate_z5_duration"`
 		} `json:"heart_rate_zone_durations"`
 	} `json:"effort_zones"`
-	MuscleGroupScore []struct {
-		MuscleGroup string  `json:"muscle_group"`
-		Score       float64 `json:"score"`
-		Percentage  int     `json:"percentage"`
-		Bucket      int     `json:"bucket"`
-		DisplayName string  `json:"display_name"`
-	} `json:"muscle_group_score"`
 }

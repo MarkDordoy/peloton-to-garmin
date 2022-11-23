@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"time"
 
+	"github.com/mdordoy/peloton-to-garmin/garmin"
 	"github.com/mdordoy/peloton-to-garmin/logger"
 	"github.com/mdordoy/peloton-to-garmin/peloton"
 	"github.com/spf13/cobra"
@@ -40,13 +42,31 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	workoutList := []peloton.WorkoutDetail{}
+
 	for _, workout := range workouts.Data {
+		if workout.FitnessDiscipline != "cycling" {
+			continue
+		}
 		workoutDetails, err := peloClient.GetWorkoutDetails(workout.ID, 5)
 		if err != nil {
 			logger.Error().Err(err).Msgf("Failed to get workout with ID %s, skipping", workout.ID)
 			continue
 		}
-		logger.Info().Msgf("workout Details %v", workoutDetails)
+		workoutDetails.Id = workout.ID
+		workoutDetails.FitnessDiscipline = workout.FitnessDiscipline
+		workoutDetails.StartTime = time.Unix(int64(workout.StartTime), 0)
+		workoutDetails.EndTime = time.Unix(int64(workout.EndTime), 0)
+		logger.Info().Time("start Time", workoutDetails.StartTime).Msg("start time parse")
+		workoutList = append(workoutList, workoutDetails)
+		//logger.Info().Msgf("workout Details %v", workoutDetails)
+	}
+
+	for _, workoutDetail := range workoutList {
+		_, err := garmin.ParsePelotonWorkout(workoutDetail, 5)
+		if err != nil {
+			logger.Error().Err(err).Msgf("Failed to parse workout %s", workoutDetail.Id)
+		}
 	}
 
 	return nil
@@ -54,7 +74,7 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 
 func init() {
 	RootCmd.AddCommand(SyncCmd)
-	SyncCmd.Flags().BoolVar(&syncConfig.PrettyLog, "PrettyLogging", false, "Use true for human readable log output")
+	SyncCmd.Flags().BoolVar(&syncConfig.PrettyLog, "PrettyLogging", true, "Use true for human readable log output")
 	SyncCmd.Flags().StringVar(&syncConfig.LogLevel, "loglevel", "info", "Log Level: trace, debug, info, warn,error")
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonPassword, "pelotonPassword", "", "peloton Password")
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonUsername, "pelotonUsername", "", "peloton Username")

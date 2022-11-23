@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 )
 
@@ -25,13 +24,12 @@ type Client struct {
 
 func NewClient(username, password, host string) (Client, error) {
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	standardClient := retryClient.StandardClient()
-	standardClient.Timeout = time.Second * 10
+	httpClient := http.Client{
+		Timeout: time.Second * 10,
+	}
 
 	pelotonClient := Client{
-		httpClient: *standardClient,
+		httpClient: httpClient,
 		Host:       host,
 	}
 
