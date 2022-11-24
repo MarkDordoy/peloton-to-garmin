@@ -1,6 +1,7 @@
 package garmin
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
@@ -13,7 +14,7 @@ import (
 const milesToMetersDistance = 1609.344
 const milesPHToMetersPerSecond = 2.237
 
-func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity int) (TrainingCenterDatabase, error) {
+func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail) (bytes.Buffer, error) {
 	tcd := TrainingCenterDatabase{}
 	tcd.SchemaLocation = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd"
 	tcd.Ns5 = "http://www.garmin.com/xmlschemas/ActivityGoals/v1"
@@ -23,92 +24,59 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 	tcd.Xsi = "http://www.w3.org/2001/XMLSchema-instance"
 	tcd.Ns4 = "http://www.garmin.com/xmlschemas/ProfileExtension/v1"
 
+	switch workoutDetail.FitnessDiscipline {
+	case "cycling":
+		tcd.Activities.Activity.Sport = "Biking"
+	case "stretching":
+		tcd.Activities.Activity.Sport = "Other"
+	default:
+		return bytes.Buffer{}, errors.New("Unknown sport activity")
+	}
+
 	startTime := workoutDetail.StartTime.Format("2006-01-02T15:04:05.000Z")
 	tcd.Activities.Activity.ID = startTime
 	tcd.Activities.Activity.Lap.StartTime = startTime
 	tcd.Activities.Activity.Lap.TotalTimeSeconds = workoutDetail.EndTime.Sub(workoutDetail.StartTime).Seconds()
+	tcd.Activities.Activity.Lap.DistanceMeters = getDistance(workoutDetail.Summaries)
+	tcd.Activities.Activity.Lap.Calories = getTotalCalories(workoutDetail.Summaries)
 
-	var totalDistance float64
-	var totalCalories int
+	summaryMetricData := getSummaryMetricData(workoutDetail.Metrics)
 
-	totalDistanceData := workoutDetail.Summaries
-	for _, data := range totalDistanceData {
-		switch data.DisplayName {
-		case "Distance":
-			//Convert miles to meteres
-			totalDistance = data.Value * milesToMetersDistance
-		case "Calories":
-			totalCalories = int(data.Value)
-		}
-	}
-	tcd.Activities.Activity.Lap.DistanceMeters = totalDistance
-	tcd.Activities.Activity.Lap.Calories = totalCalories
-
-	var maximumSpeed float64
-	var maxHeartRate int
-	var avarageHeartRate int
-	var maxBikeCadence int
-	var maxWatts int
-	var averageCadence int
-	for _, data := range workoutDetail.Metrics {
-		switch data.DisplayName {
-		case "Speed":
-			//Convert Mph to meters per second
-			maximumSpeed = data.MaxValue / milesPHToMetersPerSecond
-		case "Heart Rate":
-			maxHeartRate = int(data.MaxValue)
-			avarageHeartRate = int(data.AverageValue)
-		case "Cadence":
-			maxBikeCadence = int(data.MaxValue)
-			averageCadence = int(data.AverageValue)
-		case "Output":
-			maxWatts = int(data.MaxValue)
-		}
-	}
-
-	tcd.Activities.Activity.Lap.AverageHeartRateBpm.Value = avarageHeartRate
-	tcd.Activities.Activity.Lap.MaximumHeartRateBpm.Value = maxHeartRate
-	tcd.Activities.Activity.Lap.Cadence = averageCadence
-	tcd.Activities.Activity.Lap.Extensions.LX.MaxBikeCadence = maxBikeCadence
-	tcd.Activities.Activity.Lap.Extensions.LX.MaxWatts = maxWatts
+	tcd.Activities.Activity.Lap.AverageHeartRateBpm.Value = summaryMetricData.AvarageHeartRate
+	tcd.Activities.Activity.Lap.MaximumHeartRateBpm.Value = summaryMetricData.MaxHeartRate
+	tcd.Activities.Activity.Lap.Cadence = summaryMetricData.AverageCadence
+	tcd.Activities.Activity.Lap.Extensions.LX.MaxBikeCadence = summaryMetricData.MaxBikeCadence
+	tcd.Activities.Activity.Lap.Extensions.LX.MaxWatts = summaryMetricData.MaxWatts
 	tcd.Activities.Activity.Lap.Intensity = "Active"
 	tcd.Activities.Activity.Lap.TriggerMethod = "Manual"
 
-	tcd.Activities.Activity.Lap.MaximumSpeed = maximumSpeed
+	tcd.Activities.Activity.Lap.MaximumSpeed = summaryMetricData.MaximumSpeed
 
-	switch workoutDetail.FitnessDiscipline {
-	case "cycling":
-		tcd.Activities.Activity.Sport = "Biking"
-	default:
-		return tcd, errors.New("Unknown sport activity")
+	tcd.Activities.Activity.Lap.Extensions.LX.AvgSpeed = getAverageSpeed(workoutDetail.AverageSummaries)
+	tcd.Activities.Activity.Lap.Extensions.LX.AvgWatts = getAverageWatts(workoutDetail.AverageSummaries)
+
+	tcd.Activities.Activity.Lap.Track.Trackpoint = parseTrackpointData(&workoutDetail)
+
+	buf, err := writeOutTcxData(tcd, workoutDetail.ID)
+	if err != nil {
+		return bytes.Buffer{}, errors.Wrap(err, "failed to write tcx data to file")
 	}
 
-	var avgSpeed float64
-	var avgWatts int
+	return buf, nil
+}
 
-	for _, data := range workoutDetail.AverageSummaries {
-		switch data.DisplayName {
-		case "Avg Output":
-			avgWatts = int(data.Value)
-		case "Avg Speed":
-			avgSpeed = data.Value
-		}
-	}
-
-	tcd.Activities.Activity.Lap.Extensions.LX.AvgSpeed = avgSpeed
-	tcd.Activities.Activity.Lap.Extensions.LX.AvgWatts = avgWatts
-	intervalTime := workoutDetail.StartTime
-
+func parseTrackpointData(data *peloton.WorkoutDetail) []Trackpoint {
 	trackpoints := []Trackpoint{}
-	for index, _ := range workoutDetail.SecondsSincePedalingStart {
+	intervalTime := data.StartTime
+	for index := range data.SecondsSincePedalingStart {
 		trackpoint := Trackpoint{}
 		if index == 0 {
 			trackpoint.Time = intervalTime.Format("2006-01-02T15:04:05.000Z")
 		} else {
-			intervalTime = intervalTime.Add(time.Second * time.Duration(dataGranularity))
+			intervalTime = intervalTime.Add(time.Second * time.Duration(data.DataGranularityInSeconds))
 			trackpoint.Time = intervalTime.Format("2006-01-02T15:04:05.000Z")
 		}
-		for _, data := range workoutDetail.Metrics {
+		for _, data := range data.Metrics {
 			switch data.DisplayName {
 			case "Output":
 				trackpoint.Extensions.TPX.Watts = int(data.Values[index])
@@ -122,16 +90,89 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 		}
 		trackpoints = append(trackpoints, trackpoint)
 	}
+	return trackpoints
+}
 
-	tcd.Activities.Activity.Lap.Track.Trackpoint = trackpoints
+func getDistance(summaryData []peloton.WorkoutDetailSummaries) float64 {
+	for _, data := range summaryData {
+		switch data.DisplayName {
+		case "Distance":
+			//Convert miles to meteres
+			return data.Value * milesToMetersDistance
+		}
+	}
+	return 0
+}
 
-	file, err := xml.MarshalIndent(tcd, "", "")
-	if err != nil {
-		return tcd, errors.Wrap(err, "failed to marshall xml")
+func getTotalCalories(summaryData []peloton.WorkoutDetailSummaries) int {
+	for _, data := range summaryData {
+		switch data.DisplayName {
+		case "Calories":
+			//Convert miles to meteres
+			return int(data.Value)
+		}
 	}
-	err = ioutil.WriteFile(fmt.Sprintf("/home/mdordoy/github/public/peloton-to-garmin/temp/%s.xml", workoutDetail.Id), file, 0644)
-	if err != nil {
-		return tcd, errors.Wrap(err, "failed to write file")
+	return 0
+}
+
+func getSummaryMetricData(data []peloton.WorkoutDetailMetrics) metricDetails {
+	metricData := metricDetails{}
+
+	for _, metric := range data {
+		switch metric.DisplayName {
+		case "Speed":
+			//Convert Mph to meters per second
+			metricData.MaximumSpeed = metric.MaxValue / milesPHToMetersPerSecond
+			continue
+		case "Heart Rate":
+			metricData.MaxHeartRate = int(metric.MaxValue)
+			metricData.AvarageHeartRate = int(metric.AverageValue)
+			continue
+		case "Cadence":
+			metricData.MaxBikeCadence = int(metric.MaxValue)
+			metricData.AverageCadence = int(metric.AverageValue)
+			continue
+		case "Output":
+			metricData.MaxWatts = int(metric.MaxValue)
+		}
 	}
-	return tcd, nil
+	return metricData
+}
+
+func getAverageWatts(data []peloton.WorkoutDetailAverageSummaries) int {
+	for _, metric := range data {
+		switch metric.DisplayName {
+		case "Avg Output":
+			return int(metric.Value)
+		}
+	}
+	return 0
+}
+
+func getAverageSpeed(data []peloton.WorkoutDetailAverageSummaries) float64 {
+	for _, metric := range data {
+		switch metric.DisplayName {
+		case "Avg Speed":
+			return metric.Value
+		}
+	}
+	return 0
+}
+
+func writeOutTcxData(data TrainingCenterDatabase, workoutID string) (bytes.Buffer, error) {
+
+	file, err := xml.MarshalIndent(data, "", "")
+	if err != nil {
+		return bytes.Buffer{}, errors.Wrap(err, "failed to marshall xml")
+	}
+	err = ioutil.WriteFile(fmt.Sprintf("/home/mdordoy/github/public/peloton-to-garmin/temp/%s.tcx", workoutID), file, 0644)
+	if err != nil {
+		return bytes.Buffer{}, errors.Wrap(err, "failed to write file")
+	}
+	var buf bytes.Buffer
+	err = xml.NewEncoder(&buf).Encode(data)
+	if err != nil {
+		return bytes.Buffer{}, errors.Wrap(err, "Failed to encode garmin data for upload")
+	}
+	return buf, nil
 }

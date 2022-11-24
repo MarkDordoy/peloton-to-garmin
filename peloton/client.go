@@ -72,9 +72,9 @@ func (c *Client) getSessionCookie(username, password string) error {
 	return nil
 }
 
-func (c *Client) GetWorkouts() (Workouts, error) {
+func (c *Client) GetWorkouts(instances int) (Workouts, error) {
 	workouts := Workouts{}
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/api/user/%s/workouts", c.Host, c.UserID), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/api/user/%s/workouts?joins=peloton.ride&limit=%d&page=0&sort_by=-created", c.Host, c.UserID, instances), nil)
 	if err != nil {
 		return workouts, errors.Wrap(err, "failed to bulid users workouts request")
 	}
@@ -100,9 +100,17 @@ func (c *Client) GetWorkouts() (Workouts, error) {
 	return workouts, nil
 }
 
-func (c *Client) GetWorkoutDetails(id string, dataFrequency int) (WorkoutDetail, error) {
-	workoutDetails := WorkoutDetail{}
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/api/workout/%s/performance_graph?every_n=%d", c.Host, id, dataFrequency), nil)
+func (c *Client) GetWorkoutDetails(detail WorkoutData, dataFrequency int) (WorkoutDetail, error) {
+	workoutDetails := WorkoutDetail{
+		ID:                       detail.ID,
+		Title:                    detail.Peloton.Ride.Title,
+		Description:              detail.Peloton.Ride.Description,
+		FitnessDiscipline:        detail.FitnessDiscipline,
+		DataGranularityInSeconds: dataFrequency,
+		StartTime:                time.Unix(int64(detail.StartTime), 0),
+		EndTime:                  time.Unix(int64(detail.EndTime), 0),
+	}
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/api/workout/%s/performance_graph?every_n=%d", c.Host, detail.ID, dataFrequency), nil)
 	if err != nil {
 		return workoutDetails, errors.Wrap(err, "failed to bulid workout details request")
 	}
@@ -120,5 +128,6 @@ func (c *Client) GetWorkoutDetails(id string, dataFrequency int) (WorkoutDetail,
 	if err != nil {
 		return workoutDetails, errors.Wrap(err, "failed to decode response for workout details")
 	}
+
 	return workoutDetails, nil
 }
