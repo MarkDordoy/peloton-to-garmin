@@ -2,12 +2,16 @@ package garmin
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"time"
 
 	"github.com/mdordoy/peloton-to-garmin/peloton"
 	"github.com/pkg/errors"
 )
+
+const milesToMetersDistance = 1609.344
+const milesPHToMetersPerSecond = 2.237
 
 func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity int) (TrainingCenterDatabase, error) {
 	tcd := TrainingCenterDatabase{}
@@ -31,7 +35,8 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 	for _, data := range totalDistanceData {
 		switch data.DisplayName {
 		case "Distance":
-			totalDistance = data.Value
+			//Convert miles to meteres
+			totalDistance = data.Value * milesToMetersDistance
 		case "Calories":
 			totalCalories = int(data.Value)
 		}
@@ -44,15 +49,18 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 	var avarageHeartRate int
 	var maxBikeCadence int
 	var maxWatts int
+	var averageCadence int
 	for _, data := range workoutDetail.Metrics {
 		switch data.DisplayName {
 		case "Speed":
-			maximumSpeed = data.MaxValue
+			//Convert Mph to meters per second
+			maximumSpeed = data.MaxValue / milesPHToMetersPerSecond
 		case "Heart Rate":
 			maxHeartRate = int(data.MaxValue)
 			avarageHeartRate = int(data.AverageValue)
 		case "Cadence":
 			maxBikeCadence = int(data.MaxValue)
+			averageCadence = int(data.AverageValue)
 		case "Output":
 			maxWatts = int(data.MaxValue)
 		}
@@ -60,7 +68,7 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 
 	tcd.Activities.Activity.Lap.AverageHeartRateBpm.Value = avarageHeartRate
 	tcd.Activities.Activity.Lap.MaximumHeartRateBpm.Value = maxHeartRate
-	tcd.Activities.Activity.Lap.Cadence = maxBikeCadence
+	tcd.Activities.Activity.Lap.Cadence = averageCadence
 	tcd.Activities.Activity.Lap.Extensions.LX.MaxBikeCadence = maxBikeCadence
 	tcd.Activities.Activity.Lap.Extensions.LX.MaxWatts = maxWatts
 	tcd.Activities.Activity.Lap.Intensity = "Active"
@@ -89,16 +97,16 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 
 	tcd.Activities.Activity.Lap.Extensions.LX.AvgSpeed = avgSpeed
 	tcd.Activities.Activity.Lap.Extensions.LX.AvgWatts = avgWatts
+	intervalTime := workoutDetail.StartTime
 
 	trackpoints := []Trackpoint{}
 	for index, _ := range workoutDetail.SecondsSincePedalingStart {
 		trackpoint := Trackpoint{}
 		if index == 0 {
-			trackpoint.Time = workoutDetail.StartTime.Format("2006-01-02T15:04:05.000Z")
+			trackpoint.Time = intervalTime.Format("2006-01-02T15:04:05.000Z")
 		} else {
-			secondsToAdd := index + dataGranularity
-			activityTime := workoutDetail.StartTime.Add(time.Second * time.Duration(secondsToAdd))
-			trackpoint.Time = activityTime.Format("2006-01-02T15:04:05.000Z")
+			intervalTime = intervalTime.Add(time.Second * time.Duration(dataGranularity))
+			trackpoint.Time = intervalTime.Format("2006-01-02T15:04:05.000Z")
 		}
 		for _, data := range workoutDetail.Metrics {
 			switch data.DisplayName {
@@ -121,7 +129,7 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, dataGranularity in
 	if err != nil {
 		return tcd, errors.Wrap(err, "failed to marshall xml")
 	}
-	err = ioutil.WriteFile("/home/mdordoy/github/public/peloton-to-garmin/temp/textfile.xml", file, 0644)
+	err = ioutil.WriteFile(fmt.Sprintf("/home/mdordoy/github/public/peloton-to-garmin/temp/%s.xml", workoutDetail.Id), file, 0644)
 	if err != nil {
 		return tcd, errors.Wrap(err, "failed to write file")
 	}

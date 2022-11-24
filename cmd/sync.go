@@ -48,7 +48,7 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 		if workout.FitnessDiscipline != "cycling" {
 			continue
 		}
-		workoutDetails, err := peloClient.GetWorkoutDetails(workout.ID, 5)
+		workoutDetails, err := peloClient.GetWorkoutDetails(workout.ID, 1)
 		if err != nil {
 			logger.Error().Err(err).Msgf("Failed to get workout with ID %s, skipping", workout.ID)
 			continue
@@ -63,7 +63,7 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, workoutDetail := range workoutList {
-		_, err := garmin.ParsePelotonWorkout(workoutDetail, 5)
+		_, err := garmin.ParsePelotonWorkout(workoutDetail, 1)
 		if err != nil {
 			logger.Error().Err(err).Msgf("Failed to parse workout %s", workoutDetail.Id)
 		}
