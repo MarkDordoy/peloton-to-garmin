@@ -1,0 +1,27 @@
+products:
+  peloton-to-garmin:
+    build:
+      main-pkg: ./main
+      version-var: github.com/MarkDordoy/peloton-to-garmin/version.version
+      environment:
+        CGO_ENABLED: "0"
+      os-archs:
+        - os: linux
+          arch: amd64
+        - os: windows
+          arch: amd64
+        - os: darwin
+          arch: amd64
+    dist:
+      output-dir: build
+      disters:
+        os-arch-bin:
+          type: os-arch-bin
+          config:
+            os-archs:
+              - os: linux
+                arch: amd64
+              - os: windows
+                arch: amd64
+              - os: darwin
+                arch: amd64
