@@ -21,11 +21,12 @@ var syncConfig struct {
 	PelotonWorkoutInstances int
 	GarminEmail             string
 	GarminPassword          string
+	OutTCXFilePath          string
 }
 
 var SyncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Performs the sync",
+	Short: "Performs workout syncs from Peloton to Garmin Connect",
 	RunE:  syncCmd,
 }
 
@@ -42,14 +43,14 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 		logger.Fatal().Err(err).Msg("Failed to get users workouts")
 	}
 
-	if workouts.Count == 0 {
+	if len(workouts) == 0 {
 		logger.Info().Msg("No workouts found")
 		return nil
 	}
 
 	workoutList := []peloton.WorkoutDetail{}
 
-	for _, workout := range workouts.Data {
+	for _, workout := range workouts {
 		workoutDetails, err := peloClient.GetWorkoutDetails(workout, syncConfig.DataGranularity)
 		if err != nil {
 			logger.Error().Err(err).Msgf("Failed to get workout with ID %s, skipping", workout.ID)
@@ -61,7 +62,7 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 
 	garminClient := garmin.NewClient(syncConfig.GarminEmail, syncConfig.GarminPassword, logger)
 	for _, workoutDetail := range workoutList {
-		buf, err := garmin.ParsePelotonWorkout(workoutDetail)
+		buf, err := garmin.ParsePelotonWorkout(workoutDetail, syncConfig.OutTCXFilePath)
 		if err != nil {
 			logger.Error().Err(err).Str("Title", workoutDetail.Title).Str("Workout ID", workoutDetail.ID).Msg("Failed to convert peloton data to garmin data")
 			continue
@@ -97,12 +98,13 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 func init() {
 	RootCmd.AddCommand(SyncCmd)
 	SyncCmd.Flags().BoolVar(&syncConfig.PrettyLog, "PrettyLogging", true, "Use true for human readable log output")
-	SyncCmd.Flags().StringVar(&syncConfig.LogLevel, "loglevel", "trace", "Log Level: trace, debug, info, warn,error")
+	SyncCmd.Flags().StringVar(&syncConfig.LogLevel, "loglevel", "info", "Log Level: trace, debug, info, warn,error")
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonPassword, "pelotonPassword", "", "peloton Password")
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonUsername, "pelotonUsername", "", "peloton Username")
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonAPIHost, "PelotonAPIHost", "api.onepeloton.com", "The Peloton API host")
 	SyncCmd.Flags().IntVar(&syncConfig.DataGranularity, "granularity", 1, "Data granularity from Peloton, default every 1 second")
-	SyncCmd.Flags().IntVar(&syncConfig.PelotonWorkoutInstances, "workoutCount", 60, "Number of previous workouts you want to pull from Peloton")
+	SyncCmd.Flags().IntVar(&syncConfig.PelotonWorkoutInstances, "workoutCount", 3, "Number of previous workouts you want to pull from Peloton")
 	SyncCmd.Flags().StringVar(&syncConfig.GarminPassword, "garminPassword", "", "Garmin Password")
 	SyncCmd.Flags().StringVar(&syncConfig.GarminEmail, "garminEmail", "", "Garmin Email")
+	SyncCmd.Flags().StringVar(&syncConfig.OutTCXFilePath, "writeTCXToDisk", "", "If you provide an absolute path, the cli will write the tcx file out to disk")
 }

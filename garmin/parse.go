@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/mdordoy/peloton-to-garmin/peloton"
@@ -14,7 +15,7 @@ import (
 const milesToMetersDistance = 1609.344
 const milesPHToMetersPerSecond = 2.237
 
-func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail) (bytes.Buffer, error) {
+func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail, tcxOutToDisk string) (bytes.Buffer, error) {
 	tcd := TrainingCenterDatabase{}
 	tcd.SchemaLocation = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd"
 	tcd.Ns5 = "http://www.garmin.com/xmlschemas/ActivityGoals/v1"
@@ -30,7 +31,7 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail) (bytes.Buffer, err
 	case "stretching":
 		tcd.Activities.Activity.Sport = "Other"
 	default:
-		return bytes.Buffer{}, errors.New("Unknown sport activity")
+		return bytes.Buffer{}, errors.New(fmt.Sprintf("Unsupported sport activity: %s", workoutDetail.FitnessDiscipline))
 	}
 
 	startTime := workoutDetail.StartTime.Format("2006-01-02T15:04:05.000Z")
@@ -57,7 +58,7 @@ func ParsePelotonWorkout(workoutDetail peloton.WorkoutDetail) (bytes.Buffer, err
 
 	tcd.Activities.Activity.Lap.Track.Trackpoint = parseTrackpointData(&workoutDetail)
 
-	buf, err := writeOutTcxData(tcd, workoutDetail.ID)
+	buf, err := writeOutTcxData(tcd, workoutDetail.ID, tcxOutToDisk)
 	if err != nil {
 		return bytes.Buffer{}, errors.Wrap(err, "failed to write tcx data to file")
 	}
@@ -159,15 +160,26 @@ func getAverageSpeed(data []peloton.WorkoutDetailAverageSummaries) float64 {
 	return 0
 }
 
-func writeOutTcxData(data TrainingCenterDatabase, workoutID string) (bytes.Buffer, error) {
+func writeOutTcxData(data TrainingCenterDatabase, workoutID, tcxOutToDisk string) (bytes.Buffer, error) {
 
 	file, err := xml.MarshalIndent(data, "", "")
 	if err != nil {
 		return bytes.Buffer{}, errors.Wrap(err, "failed to marshall xml")
 	}
-	err = ioutil.WriteFile(fmt.Sprintf("/home/mdordoy/github/public/peloton-to-garmin/temp/%s.tcx", workoutID), file, 0644)
-	if err != nil {
-		return bytes.Buffer{}, errors.Wrap(err, "failed to write file")
+	if tcxOutToDisk != "" {
+		exists, err := exists(tcxOutToDisk)
+		if err != nil {
+			return bytes.Buffer{}, errors.Wrap(err, "issue with path provided to write tcx file out to disk")
+		}
+
+		if !exists {
+			return bytes.Buffer{}, errors.Wrap(err, "Path provided to write tcx to disk does not exist, please fix")
+		}
+
+		err = ioutil.WriteFile(fmt.Sprintf("%s/%s.tcx", tcxOutToDisk, workoutID), file, 0644)
+		if err != nil {
+			return bytes.Buffer{}, errors.Wrap(err, "failed to write file")
+		}
 	}
 	var buf bytes.Buffer
 	err = xml.NewEncoder(&buf).Encode(data)
@@ -175,4 +187,19 @@ func writeOutTcxData(data TrainingCenterDatabase, workoutID string) (bytes.Buffe
 		return bytes.Buffer{}, errors.Wrap(err, "Failed to encode garmin data for upload")
 	}
 	return buf, nil
+}
+
+// exists returns whether the given file or directory exists
+func exists(path string) (bool, error) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	if !stat.IsDir() {
+		return false, errors.New("Path provided is not a directory")
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }

@@ -72,32 +72,52 @@ func (c *Client) getSessionCookie(username, password string) error {
 	return nil
 }
 
-func (c *Client) GetWorkouts(instances int) (Workouts, error) {
-	workouts := Workouts{}
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/api/user/%s/workouts?joins=peloton.ride&limit=%d&page=0&sort_by=-created", c.Host, c.UserID, instances), nil)
-	if err != nil {
-		return workouts, errors.Wrap(err, "failed to bulid users workouts request")
+func (c *Client) GetWorkouts(instances int) ([]WorkoutData, error) {
+	workoutData := []WorkoutData{}
+	instanceCount := 0
+	page := 0
+	for instanceCount < instances {
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/api/user/%s/workouts?joins=peloton.ride&limit=%d&page=%d&sort_by=-created", c.Host, c.UserID, instances, page), nil)
+		if err != nil {
+			return workoutData, errors.Wrap(err, "failed to bulid users workouts request")
+		}
+
+		req.Header.Add("Content-Type", "application/json")
+		req.AddCookie(c.authCookie)
+
+		resp, err := c.httpClient.Do(req)
+
+		if err != nil {
+			return workoutData, errors.Wrapf(err, "failed to get user workouts response. StatusCode: %d", resp.StatusCode)
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			return workoutData, errors.New(fmt.Sprintf("API returned an unxpected status code: %d", resp.StatusCode))
+		}
+
+		defer resp.Body.Close()
+		workouts := Workouts{}
+		err = json.NewDecoder(resp.Body).Decode(&workouts)
+		if err != nil {
+			return workoutData, errors.Wrap(err, "failed to decode response for user workouts")
+		}
+
+		for _, data := range workouts.Data {
+			if len(workoutData) <= instances {
+				workoutData = append(workoutData, data)
+				instanceCount++
+			} else {
+				break
+			}
+		}
+
+		if page == workouts.PageCount {
+			break
+		}
+
+		page++
 	}
-	req.Header.Add("Content-Type", "application/json")
-	req.AddCookie(c.authCookie)
-
-	resp, err := c.httpClient.Do(req)
-
-	if err != nil {
-		return workouts, errors.Wrapf(err, "failed to get user workouts response. StatusCode: %d", resp.StatusCode)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return workouts, errors.New(fmt.Sprintf("API returned an unxpected status code: %d", resp.StatusCode))
-	}
-
-	defer resp.Body.Close()
-
-	err = json.NewDecoder(resp.Body).Decode(&workouts)
-	if err != nil {
-		return workouts, errors.Wrap(err, "failed to decode response for user workouts")
-	}
-	return workouts, nil
+	return workoutData, nil
 }
 
 func (c *Client) GetWorkoutDetails(detail WorkoutData, dataFrequency int) (WorkoutDetail, error) {
