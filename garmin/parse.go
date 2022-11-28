@@ -85,7 +85,7 @@ func parseTrackpointData(data *peloton.WorkoutDetail) []Trackpoint {
 			case "Heart Rate":
 				trackpoint.HeartRateBpm.Value = int(data.Values[index])
 			case "Speed":
-				trackpoint.Extensions.TPX.Speed = data.Values[index]
+				trackpoint.Extensions.TPX.Speed = data.Values[index] / milesPHToMetersPerSecond
 			}
 		}
 		trackpoints = append(trackpoints, trackpoint)
