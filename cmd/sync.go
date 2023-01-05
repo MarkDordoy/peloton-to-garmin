@@ -34,6 +34,19 @@ func syncCmd(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := logger.NewLogger(syncConfig.LogLevel, syncConfig.PrettyLog)
 	_ = logger.WithContext(ctx)
+
+	if syncConfig.GarminEmail == "" {
+		logger.Fatal().Msg("Garmin email not provided, this is required")
+	}
+	if syncConfig.GarminPassword == "" {
+		logger.Fatal().Msg("Garmin password not provided, this is required")
+	}
+	if syncConfig.PelotonUsername == "" {
+		logger.Fatal().Msg("Peloton username not provided, this is required")
+	}
+	if syncConfig.PelotonPassword == "" {
+		logger.Fatal().Msg("Peloton password not provided, this is required")
+	}
 	peloClient, err := peloton.NewClient(syncConfig.PelotonUsername, syncConfig.PelotonPassword, syncConfig.PelotonAPIHost)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to authenticate with Peloton")
@@ -103,7 +116,7 @@ func init() {
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonUsername, "pelotonUsername", "", "peloton Username")
 	SyncCmd.Flags().StringVar(&syncConfig.PelotonAPIHost, "PelotonAPIHost", "api.onepeloton.com", "The Peloton API host")
 	SyncCmd.Flags().IntVar(&syncConfig.DataGranularity, "granularity", 1, "Data granularity from Peloton, default every 1 second")
-	SyncCmd.Flags().IntVar(&syncConfig.PelotonWorkoutInstances, "workoutCount", 3, "Number of previous workouts you want to pull from Peloton")
+	SyncCmd.Flags().IntVar(&syncConfig.PelotonWorkoutInstances, "workoutCount", 30, "Number of previous workouts you want to pull from Peloton")
 	SyncCmd.Flags().StringVar(&syncConfig.GarminPassword, "garminPassword", "", "Garmin Password")
 	SyncCmd.Flags().StringVar(&syncConfig.GarminEmail, "garminEmail", "", "Garmin Email")
 	SyncCmd.Flags().StringVar(&syncConfig.OutTCXFilePath, "writeTCXToDisk", "", "If you provide an absolute path, the cli will write the tcx file out to disk")
