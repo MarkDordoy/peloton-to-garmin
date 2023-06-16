@@ -173,7 +173,7 @@ func writeOutTcxData(data TrainingCenterDatabase, workoutID, tcxOutToDisk string
 		}
 
 		if !exists {
-			return bytes.Buffer{}, errors.Wrap(err, "Path provided to write tcx to disk does not exist, please fix")
+			return bytes.Buffer{}, errors.New("Path provided to write tcx to disk does not exist, please fix")
 		}
 
 		err = ioutil.WriteFile(fmt.Sprintf("%s/%s.tcx", tcxOutToDisk, workoutID), file, 0644)
@@ -201,5 +201,5 @@ func exists(path string) (bool, error) {
 	if os.IsNotExist(err) {
 		return false, nil
 	}
-	return false, err
+	return true, nil
 }
